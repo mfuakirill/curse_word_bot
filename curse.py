@@ -10,17 +10,43 @@ CONFIG_FILE = 'config.json'
 # Default configuration structure
 DEFAULT_CONFIG = {
     "BOT_TOKEN": "YOUR_BOT_TOKEN_HERE",
-    "CURSE_WORD": "example"
+    "CURSE_WORD": "example",
+    "OWNER": "id_here"
 }
 
 # Global variables
 AUTHORIZED_USERS = set()
 MESSAGE_COUNTS = defaultdict(int)
 CURSE_WORD = ""
+OWNER = 0
+
+def get_admins(message):
+    try:
+        if bot.get_chat(message.chat.id).type == 'private':
+            return []
+        else:
+            admins = bot.get_chat_administrators(chat_id=message.chat.id)
+            true_admins = []
+            for admin in admins:
+                if admin.status == 'creator' or admin.can_restrict_members:
+                    true_admins.append(admin.user.id)
+            return true_admins
+    except Exception as e:
+        catch_error(message, e)
+        return None
+
+def have_rights(message):
+    # if message.from_user.id in get_admins(message):
+    global OWNER
+    if message.from_user.id == OWNER:
+        return True
+    else:
+        bot.reply_to(message, 'Увы, но у вас нету прав.')
+        return False
 
 # Load or create configuration
 def load_config():
-    global AUTHORIZED_USERS, CURSE_WORD
+    global AUTHORIZED_USERS, CURSE_WORD, OWNER
 
     if not os.path.exists(CONFIG_FILE):
         # Create default config file
@@ -40,6 +66,7 @@ def load_config():
 
         BOT_TOKEN = config['BOT_TOKEN']
         CURSE_WORD = config['CURSE_WORD']
+        OWNER = config['OWNER']
 
         # Load authorized users if they exist
         if 'AUTHORIZED_USERS' in config:
@@ -71,6 +98,9 @@ def is_user_authorized(user_id):
 
 @bot.message_handler(commands=['add'])
 def add_user(message):
+    if not have_rights(message):
+        return
+
     """Add user ID to authorized list"""
     if not message.text.startswith('/add '):
         bot.reply_to(message, "Usage: /add <user_id>")
@@ -86,6 +116,8 @@ def add_user(message):
 
 @bot.message_handler(commands=['list'])
 def list_users(message):
+    if not have_rights(message):
+        return
     """List all authorized users"""
     if not AUTHORIZED_USERS:
         bot.reply_to(message, "No authorized users.")
@@ -96,6 +128,8 @@ def list_users(message):
 
 @bot.message_handler(commands=['del'])
 def delete_user(message):
+    if not have_rights(message):
+        return
     """Remove user ID from authorized list"""
     if not message.text.startswith('/del '):
         bot.reply_to(message, "Usage: /del <user_id>")
@@ -139,10 +173,12 @@ def check_curse_word(message):
     else:
         # Delete message and notify user
         try:
+            user = telebot.util.user_link(message.from_user)
             bot.delete_message(message.chat.id, message.message_id)
             bot.send_message(
-                message.chat.id, 
-                f"Not enough {CURSE_WORD}"
+                message.chat.id,
+                f'{user}, недостаточно "{CURSE_WORD}", ожидалось {required_count}.\n\nЖалобы направлять в спортлото.',
+                parse_mode='HTML'
             )
         except Exception as e:
             print(f"Could not delete message: {e}")
